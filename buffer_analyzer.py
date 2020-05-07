@@ -1,13 +1,11 @@
 import sys
+import argparse
 import curses
+import binascii
+
 from ui import *
 
-data = bytearray([
-    0x00, 0x1a, 0x03, 0x05, 0x54, 0x65, 0x73, 0x74, 0x31, 0x27,
-    0x1b, 0x00, 0x01, 0x05, 0x54, 0x65, 0x73, 0x74, 0x32, 0x27,
-    0x1b, 0x00, 0x01, 0x05, 0x54, 0x65, 0x73, 0x74, 0x33, 0x27,
-    0x1c, 0x00, 0x01
-    ])
+data = bytearray([])
 
 class StringView(TextView):
 
@@ -227,4 +225,9 @@ def main(stdscr):
     window.mainloop()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Analyze buffer')
+    parser.add_argument(dest='data', action='store',
+                    help='HEX string representing the buffer to analyze')
+    args = parser.parse_args()
+    data = binascii.unhexlify(args.data)
     curses.wrapper(main)
