@@ -3,6 +3,7 @@ import curses
 WHITE_ON_BLACK = 1
 RED_ON_WHITE = 2
 BLUE_ON_WHITE = 3
+RED_ON_RED = 4
 
 class Window(object):
 
@@ -35,10 +36,11 @@ class Window(object):
         y = Window.BORDER_HEIGHT
 
         for child in self.children:
-            width, height = child.refresh(x, y, *self.get_size())
-            y += height
-            if y >= self.height - Window.BORDER_HEIGHT:
-                break
+            if child.is_visible():
+                width, height = child.refresh(x, y, *self.get_size())
+                y += height
+                if y >= self.height - Window.BORDER_HEIGHT:
+                    break
         self.scr.refresh()
 
     def add_child(self, window, x, y, width_flags, height_flags):
@@ -73,12 +75,19 @@ class View(object):
         self.real_width = None
         self.height_flags = Window.EXPAND
         self.width_flags = Window.EXPAND
+        self.visible = True
 
     def get_parent(self):
         return self.parent
 
     def get_screen(self):
         return self.scr
+
+    def set_visibility(self, visible):
+        self.visible = visible
+
+    def is_visible(self):
+        return self.visible
 
     def set_flags(self, height_flags, width_flags):
         self.height_flags = height_flags
@@ -125,7 +134,10 @@ class TextView(View):
                     return _x, _y
                 _y += 1
                 _x = x
-            self.scr.addstr(y + _y, x + _x, c, curses.color_pair(self.color))
+            try:
+                self.scr.addstr(y + _y, x + _x, c, curses.color_pair(self.color))
+            except ValueError:
+                self.scr.addstr(y + _y, x + _x, " ", curses.color_pair(RED_ON_RED))
             _x += len(c)
         _y += 1
         return _x, _y
@@ -137,3 +149,4 @@ def init_ui():
     curses.init_pair(WHITE_ON_BLACK, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.init_pair(RED_ON_WHITE, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(BLUE_ON_WHITE, curses.COLOR_BLUE, curses.COLOR_WHITE)
+    curses.init_pair(RED_ON_RED, curses.COLOR_RED, curses.COLOR_RED)

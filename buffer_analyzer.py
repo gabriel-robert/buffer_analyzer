@@ -3,15 +3,20 @@ import curses
 from ui import *
 
 data = bytearray([
-0x00, 0x02, 0x3a, 0x00, 0x01, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x23, 0x01, 0xcf, 0x0d,
-0xd4, 0x57, 0xe6, 0x61, 0x7a, 0xd0, 0xaf, 0x05,
-0xea, 0x38, 0xc0, 0xfa, 0x65, 0x21, 0xe1, 0xc6,
-0x16, 0x85, 0x1a, 0xb2, 0xe8, 0x27, 0x35, 0x8e,
-0x5a, 0x88, 0x5f, 0x6a, 0xb0, 0xc2, 0x47, 0x31,
-0x82, 0x50, 0x73, 0x15, 0x78, 0x8d, 0xde, 0xc8,
-0x9c, 0x5c
-])
+    0x00, 0x1a, 0x03, 0x05, 0x54, 0x65, 0x73, 0x74, 0x31, 0x27,
+    0x1b, 0x00, 0x01, 0x05, 0x54, 0x65, 0x73, 0x74, 0x32, 0x27,
+    0x1b, 0x00, 0x01, 0x05, 0x54, 0x65, 0x73, 0x74, 0x33, 0x27,
+    0x1c, 0x00, 0x01
+    ])
+
+class StringView(TextView):
+
+    def __init__(self, parent, encoding="utf-8"):
+        super().__init__(parent)
+        self.encoding = encoding
+
+    def set_string(self, buf):
+        self.text = str(buf, self.encoding, "replace")
 
 class WordView(TextView):
 
@@ -57,6 +62,7 @@ class PacketView(View):
     def __init__(self, parent):
         super().__init__(parent)
         self.set_highlight()
+        self.mode = "word"
 
     def refresh(self, x, y, max_width, max_height, width_flags=Window.EXPAND, height_flags=Window.EXPAND):
         return self.print_packet(x, y, max_width, max_height)
@@ -79,6 +85,13 @@ class PacketView(View):
 
     def get_length(self):
         return len(self.buffer)
+
+    def set_mode(self, mode):
+        self.mode = mode
+        self.highlight = (self.highlight[0], 1)
+
+    def get_mode(self):
+        return self.mode
 
     def print_packet(self, x, y, max_width, max_height, format="%02x"):
         _x = 0
@@ -111,25 +124,46 @@ class PacketView(View):
         return _x, _y
 
 def main(stdscr):
+
     init_ui()
+
     def refresh():
         start, length, word = packet_view.get_highlight()
-        word_view_hex.set_word(word, length)
-        word_view_dec.set_word(word, length)
+        if packet_view.get_mode() == "word":
+            word_view_hex.set_visibility(True)
+            word_view_hex.set_word(word, length)
+            word_view_dec.set_visibility(True)
+            word_view_dec.set_word(word, length)
+            string_view.set_visibility(False)
+            byteorder_view.set_text("Word (%d bits, %s endian):" % (word_view_dec.get_word_size() * 8, word_view_dec.get_byteorder()))
+        else:
+            string_view.set_visibility(True)
+            string_view.set_string(word)
+            word_view_hex.set_visibility(False)
+            word_view_dec.set_visibility(False)
+            byteorder_view.set_text("String (%d character%s):" % (length, "s" if length > 1 else ""))
+
         cursor_view.set_text("Buffer (%d bytes, %d / %d)" % (packet_view.get_length(), packet_view.get_highlight()[0], packet_view.get_length() - 1))
-        byteorder_view.set_text("Word (%d bits, %s endian):" % (word_view_dec.get_word_size() * 8, word_view_dec.get_byteorder()))
 
     def _on_key_up():
         start, length, word = packet_view.get_highlight()
-        if length < 8:
-            length *= 2
+        if packet_view.get_mode() == "word":
+            if length < 8:
+                length *= 2
+        else:
+            if length < packet_view.get_length() - 1:
+                length += 1
         packet_view.set_highlight(start, length)
         refresh()
 
     def _on_key_down():
         start, length, word = packet_view.get_highlight()
-        if length > 1:
-            length = int(length / 2)
+        if packet_view.get_mode() == "word":
+            if length > 1:
+                length = int(length / 2)
+        else:
+            if length > 0:
+                length -= 1
         packet_view.set_highlight(start, length)
         refresh()
 
@@ -151,6 +185,10 @@ def main(stdscr):
     def _on_key_q():
         exit(0)
 
+    def _on_key_s():
+        packet_view.set_mode("string" if packet_view.get_mode() == "word" else "word")
+        refresh()
+
     window = Window(stdscr, "Buffer Analyzer")
 
     packet_view = PacketView(window)
@@ -167,6 +205,8 @@ def main(stdscr):
 
     cursor_view = TextView(window, "Buffer (%d bytes, %d / %d)" % (packet_view.get_length(), packet_view.get_highlight()[0], packet_view.get_length() - 1))
     byteorder_view = TextView(window, "Word (%d bits, %s endian):" % (word_view_dec.get_word_size() * 8, word_view_dec.get_byteorder()))
+    string_view = StringView(window)
+    string_view.set_visibility(False)
 
     window.add_child(cursor_view, 0, 0, *window.get_size())
     window.add_child(packet_view, 0, 0, *window.get_size())
@@ -174,6 +214,7 @@ def main(stdscr):
     window.add_child(byteorder_view, 0, 0, *window.get_size())
     window.add_child(word_view_hex, 0, 0, *window.get_size())
     window.add_child(word_view_dec, 0, 0, *window.get_size())
+    window.add_child(string_view, 0, 0, *window.get_size())
 
     window.add_key_handler(curses.KEY_UP, _on_key_up)
     window.add_key_handler(curses.KEY_DOWN, _on_key_down)
@@ -181,6 +222,7 @@ def main(stdscr):
     window.add_key_handler(curses.KEY_RIGHT, _on_key_right)
     window.add_key_handler(ord('b'), _on_key_b)
     window.add_key_handler(ord('q'), _on_key_q)
+    window.add_key_handler(ord('s'), _on_key_s)
 
     window.mainloop()
 
